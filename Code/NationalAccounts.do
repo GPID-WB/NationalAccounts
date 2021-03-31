@@ -13,11 +13,17 @@
 if (lower("`c(username)'") == "wb514665") {
 	cd "C:\Users\WB514665\OneDrive - WBG\PovcalNet\GitHub\NationalAccounts"
 }
+
+else if (lower("`c(username)'") == "wb537472") {    //Enter your UPI.
+	cd "C:\Users\wb537472\OneDrive - WBG\Documents\Git\NationalAccounts"   //Enter the path of your directory.
+}
 ************************
 *** PREPARE WDI DATA ***
 ************************
-/*
+
 set checksum off
+
+/*
 // WDI does not have HFCE per capita in 2017 PPP and LCU, so the two series are in total. Will divide will pop later
 wbopendata, ///
 indicator(NY.GDP.MKTP.PP.KD; NY.GDP.MKTP.KD;      NY.GDP.MKTP.KN; /// GDP         (2017 PPP, 2010 USD, LCU)
@@ -26,11 +32,11 @@ indicator(NY.GDP.MKTP.PP.KD; NY.GDP.MKTP.KD;      NY.GDP.MKTP.KN; /// GDP       
 		  NY.GNP.PCAP.PP.KD; NY.GNP.PCAP.KD;      NY.GNP.PCAP.KN; /// GNI/capita  (2017 PPP, 2010 USD, LCU)
           NE.CON.PRVT.PP.KD; NE.CON.PRVT.KD;      NE.CON.PRVT.KN; /// HFCE        (2017 PPP, 2010 USD, LCU)
 		                     NE.CON.PRVT.PC.KD                  ; /// HFCE/capita (          2010 USD     )
-		  NY.GDP.MKTP.KD.ZG; NY.GDP.PCAP.KD.ZG                  ; /// GDP  growth and GDP/capita growth
+		  NY.GDP.MKTP.KD.ZG; NY.GDP.PCAP.KD.ZG;	  NY.GDP.DEFL.ZS; /// GDP  growth and GDP/capita growth and GDP deflator
           NY.GNP.MKTP.KD.ZG; NY.GNP.PCAP.KD.ZG                  ; /// GNI  growth and GDP/capita growth
 		  NE.CON.PRVT.KD.ZG; NE.CON.PRVT.PC.KD.ZG               ) /// HFCE growth and GDP/capita growth
 		  long clear
-// WDI does not have HFCE/capita in 2017 PPP and LCU, so the two series are total. Will divide wih pop later.
+// WDI does not have HFCE/capita in 2017 PPP and LCU, so the two series are total. Will divide with pop later.
 rename ny_gdp_mktp_pp_kd    gdp_ppp2017_wdi_npc
 rename ny_gdp_mktp_kd       gdp_usd2010_wdi_npc
 rename ny_gdp_mktp_kn       gdp_lcu_wdi_npc
@@ -53,11 +59,14 @@ rename ne_con_prvt_kn       hfce_lcu_wdi_npc
 rename ne_con_prvt_pc_kd    hfce_usd2010_wdi
 rename ne_con_prvt_kd_zg    hfce_gro_wdi_npc
 rename ne_con_prvt_pc_kd_zg hfce_gro_wdi
+rename ny_gdp_defl_zs 		gdp_def_wdi 
 rename countrycode       code
 keep   code year gdp* gni* hfce* 
 order code year gdp* gni* hfce*
 save "InputData/WDI_2021_02.dta", replace
 */
+
+
 use "InputData/WDI_2021_02.dta", clear
 tempfile wdi
 save    `wdi'
@@ -97,7 +106,8 @@ save    `weo'
 *** PREPARE MADDISON DATA ***
 *****************************
 // Load data from website
-use "https://www.rug.nl/ggdc/historicaldevelopment/maddison/data/mpd2020.dta", clear
+*use "https://www.rug.nl/ggdc/historicaldevelopment/maddison/data/mpd2020.dta", clear
+use "InputData/mpd2020.dta", clear
 // Keep relevant variables
 rename countrycode code
 rename gdppc gdp_ppp2011_mdp
