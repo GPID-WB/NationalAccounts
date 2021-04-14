@@ -1,10 +1,11 @@
+
 ********************
 *** INTRODUCTION ***
 ********************
 // This .do-file creates a series of real GDP, GNI, and HFCE per capita in 2017 PPPs, 2011 PPPs, 2010 USD and constant LCU
 // It does so by combining series from the WDI, WEO, and the Maddison database
 // Created by: Daniel Gerszon Mahler, Marta Schoch and Samuel Kofi Tetteh Baah.
-// Last update: February 2021.
+// Last update: April 2021.
 
 *****************
 *** DIRECTORY ***
@@ -34,8 +35,9 @@ indicator(NY.GDP.MKTP.PP.KD; NY.GDP.MKTP.KD;      NY.GDP.MKTP.KN; /// GDP       
 		                     NE.CON.PRVT.PC.KD                  ; /// HFCE/capita (          2010 USD     )
 		  NY.GDP.MKTP.KD.ZG; NY.GDP.PCAP.KD.ZG;	  NY.GDP.DEFL.ZS; /// GDP  growth and GDP/capita growth and GDP deflator
           NY.GNP.MKTP.KD.ZG; NY.GNP.PCAP.KD.ZG                  ; /// GNI  growth and GDP/capita growth
-		  NE.CON.PRVT.KD.ZG; NE.CON.PRVT.PC.KD.ZG               ) /// HFCE growth and GDP/capita growth
-		  long clear
+		  NE.CON.PRVT.KD.ZG; NE.CON.PRVT.PC.KD.ZG               ;  /// HFCE growth and GDP/capita growth
+		  NY.GDP.PCAP.CN) long clear							/// GDP current LCU								 
+		  
 // WDI does not have HFCE/capita in 2017 PPP and LCU, so the two series are total. Will divide with pop later.
 rename ny_gdp_mktp_pp_kd    gdp_ppp2017_wdi_npc
 rename ny_gdp_mktp_kd       gdp_usd2010_wdi_npc
@@ -60,14 +62,22 @@ rename ne_con_prvt_pc_kd    hfce_usd2010_wdi
 rename ne_con_prvt_kd_zg    hfce_gro_wdi_npc
 rename ne_con_prvt_pc_kd_zg hfce_gro_wdi
 rename ny_gdp_defl_zs 		gdp_def_wdi 
+rename ny_gdp_pcap_cn		gdplcucurr
+
+replace gdplcucurr = 10*gdplcucurr if countrycode=="MRT"   //Currency conversion
+replace gdplcucurr = 3.5781293062201*gdplcucurr if countrycode=="PSE"   //Currency conversion
+ 
 rename countrycode       code
 keep   code year gdp* gni* hfce* 
-order code year gdp* gni* hfce*
-save "InputData/WDI_2021_02.dta", replace
+order code year gdp* gni* hfce* 
+save "InputData/WDI_2021_03.dta", replace
 */
 
+*********************
+*** LOAD WDI DATA ***
+*********************
 
-use "InputData/WDI_2021_02.dta", clear
+use "InputData/WDI_2021_03.dta", clear
 tempfile wdi
 save    `wdi'
 
@@ -136,18 +146,6 @@ keep code ppp_2011_v2_v1 ppp_2017_v1_v1
 rename ppp_2011_v2_v1 ppp_cons2011
 rename ppp_2017_v1_v1 ppp_cons2017
 
-*Adjustments for Liberia: WDI PPP is in USD, ICP PPP is in local currency units (Liberian dollars). I use the PPPs from the ICP, not WDI.
-
-//Since HFCE per capita from WDI is being used, convert ICP PPP to WDI PPP for consistency. Divide ICP PPP by Liberia official market exchange rate.
-
- /*
-Year -->																					2011			2017
-WDI	Liberia	LBR	Official exchange rate (LCU per US$, period average)	PA.NUS.FCRF		72.22666667		112.7066667
-WDI	Liberia	LBR	PPP conversion factor, GDP (LCU per international $)	PA.NUS.PPP		0.545838708		0.460993551
-ICP	Liberia	LBR	Official exchange rate (LCU per US$, period average)	PA.NUS.FCRF		72.22666667		112.7066667
-ICP	Liberia	LBR	PPP conversion factor, GDP (LCU per international $)	PA.NUS.PPP		39.42411041		51.95704651
-*/
-
 replace ppp_cons2011 = ppp_cons2011/72.22666667 if code=="LBR"  //Incorporate market exchange rate for Liberia
 replace ppp_cons2017 = ppp_cons2017/112.7066667 if code=="LBR"  //Incorporate market exchange rate for Liberia
 
@@ -166,18 +164,6 @@ rename CountryCode countrycode
 rename YR2011 ppp_gdp2011
 rename YR2017 ppp_gdp2017
 replace countrycode = "XKX" if countrycode=="KSV"
-
-*Adjustments for Liberia: WDI PPP is in USD, ICP PPP is in local currency units (Liberian dollars). I use the PPPs from the ICP, not WDI.
-
-//Since GDP per capita from WDI is being used, convert ICP PPP to WDI PPP for consistency. Divide ICP PPP by Liberia official market exchange rate.
-
- /*
-Year -->																					2011			2017
-WDI	Liberia	LBR	Official exchange rate (LCU per US$, period average)	PA.NUS.FCRF		72.22666667		112.7066667
-WDI	Liberia	LBR	PPP conversion factor, GDP (LCU per international $)	PA.NUS.PPP		0.545838708		0.460993551
-ICP	Liberia	LBR	Official exchange rate (LCU per US$, period average)	PA.NUS.FCRF		72.22666667		112.7066667
-ICP	Liberia	LBR	PPP conversion factor, GDP (LCU per international $)	PA.NUS.PPP		39.42411041		51.95704651
-*/
 
 replace ppp_gdp2011 = ppp_gdp2011/72.22666667 if countrycode=="LBR"  //Incorporate market exchange rate for Liberia
 replace ppp_gdp2017 = ppp_gdp2017/112.7066667 if countrycode=="LBR"  //Incorporate market exchange rate for Liberia
@@ -217,24 +203,7 @@ rename ny_gdp_pcap_kn		gdppc_cons_lcu
 
 gen gdp_def_own = 100*gdppc_curr_lcu/gdppc_cons_lcu //Compute own GDP deflator and compare with what's already in WDI below.
 
-/*
-Note that you could use any of these as GDP deflator: the rates of change are similar. 
-
-keep countrycode year gdp_def*
-drop if gdp_def1==. & gdp_def2==.
 sum gdp_def*
-sort countrycode year
-bysort countrycode: gen g_gdp_def1 = gdp_def1[_n]/gdp_def1[_n-1] - 1
-bysort countrycode: gen g_gdp_def2 = gdp_def2[_n]/gdp_def2[_n-1] - 1 
-sum g_gdp_def* if inlist(year,2011,2017)  & g_gdp_def1!=. & g_gdp_def2!=.
-sum gdp_def* if inlist(year,2011,2017) 
-*br if g_gdp_def1 != g_gdp_def2 & inlist(year,2011,2017)
-*br if g_gdp_def1 != g_gdp_def2 & inlist(year,2017)
-
-GDP deflator (base year varies by country)	NY.GDP.DEFL.ZS
-GDP deflator: linked series (base year varies by country)	NY.GDP.DEFL.ZS.AD
-*/
-
 drop gdp_def2
 rename gdp_def1 gdp_def
 rename countrycode code
@@ -246,10 +215,13 @@ reshape wide gdp_def gdp_def_own, i(code) j(year)
 
 gen x2011 = gdp_def2011/gdp_def_own2011
 gen x2017 = gdp_def2017/gdp_def_own2017
-sort x2017
+*sort x2017
 *br 
 *sort x2011
-br
+*br
+//Own GDP deflator 2017 for SDN differs slightly (relative difference=1.026717).
+//Own GDP deflator 2011 for SDN differs slightly (relative difference=1.005251).
+//I use GDP deflators from WDI going forward.
 
 drop if gdp_def2011==. & gdp_def2017==. & gdp_def_own2011==.  & gdp_def_own2017==.
 drop x*
@@ -305,28 +277,60 @@ foreach var of varlist *gro*npc {
 }
 drop population
 
+*****************************************************
+*** FILL OUT GAPS IN GDP WITH CONSTANT LCU VALUES ***
+*****************************************************
+*count if missing(gdp_ppp2017_wdi) & !missing(gdp_lcu_wdi) & !missing(gdp_def2017) & !missing(ppp_gdp2017)
+*br code year gdp_ppp2017_wdi gdp_lcu_wdi gdp_def2017 ppp_gdp2017 if missing(gdp_ppp2017_wdi) & !missing(gdp_lcu_wdi) & !missing(gdp_def2017) & !missing(ppp_gdp2017)
+
+//Important to note: Base year for GDP deflator varies by country. First, determine the base years used, and move to the 2017 ICP reference years.  
+gen gdpdef_base_ = gdp_def_wdi if gdplcucurr==gdp_lcu_wdi
+egen gdpdef_base = mean(gdpdef_base_),by(code)
+drop gdpdef_base_
+
+gen gdpdef_cf_2017 = gdp_def2017/gdpdef_base   //Compute conversion factor for GDP deflator for 2017.
+
+gen gdp_2017ppp_own = gdp_lcu_wdi * gdpdef_cf_2017 * (1/ppp_gdp2017)
+gen d_gdp_2017ppp = gdp_ppp2017_wdi/gdp_2017ppp_own  //Check difference between own GDP and series in WDI for non-missing observations in WDI. 
+
+sum d_gdp_2017ppp //Not a perfect match (mean = 1.000003, min = .9739763, max = 1.037369)
+
+gsort -d_gdp_2017ppp
+br code year d_gdp_2017ppp gdp_ppp2017_wdi gdp_2017ppp_own gdp_lcu_wdi gdp_def2017 ppp_gdp2017 if !missing(d_gdp_2017ppp)
+
+br code year d_gdp_2017ppp gdp_ppp2017_wdi gdp_2017ppp_own ppp_gdp2017 if missing(gdp_ppp2017_wdi) & !missing(gdp_2017ppp_own)
+
+sum gdp_ppp2017_wdi gdp_2017ppp_own
+replace gdp_ppp2017_wdi = gdp_2017ppp_own if missing(gdp_ppp2017_wdi) & !missing(gdp_2017ppp_own)
+
+drop gdp_2017ppp_own d_gdp_2017ppp gdpdef_base gdplcucurr gdpdef_cf_2017 gni_gro 
+
 ***********************************************
 *** CREATE MISSING 2011 AND 2017 PPP SERIES ***
 ***********************************************
-foreach type in gdp gni {
+//GDP (using PPPs for GDP)
+foreach type in gdp {  //I am removing gni from here because we agreed we cannot use GDP deflator for GNI per capita. Will be included later, and be derived from ratios between other currencies.
 	foreach source in wdi weo mdp {
 		cap gen `type'_ppp2017_`source' = `type'_ppp2011_`source'*ppp_gdp2011/ppp_gdp2017*gdp_def2017/gdp_def2011
 		cap gen `type'_ppp2011_`source' = `type'_ppp2017_`source'*ppp_gdp2017/ppp_gdp2011*gdp_def2011/gdp_def2017
 	}
 }
 
+//HFCE (using PPPs for private consumption)
 foreach type in hfce {
 	foreach source in wdi weo mdp {
 		cap gen `type'_ppp2017_`source' = `type'_ppp2011_`source'*ppp_cons2011/ppp_cons2017*cpi2017/cpi2011
 		cap gen `type'_ppp2011_`source' = `type'_ppp2017_`source'*ppp_cons2017/ppp_cons2011*cpi2011/cpi2017
 	}
 }
+
 drop cpi2011 cpi2017 gdp_def2011 gdp_def2017 gdp_def_own2011 gdp_def_own2017 ppp_cons2011 ppp_cons2017 ppp_gdp2011 ppp_gdp2017 gdp_def_wdi 
+
 
 **********************************
 *** CREATE COMPLETE WDI SERIES ***
 **********************************
-foreach type in gdp gni {
+foreach type in gdp  {  //-do-
 	// Chain backwards and forwards
 	foreach varprimary of varlist `type'_ppp2017_wdi `type'_ppp2011_wdi `type'_usd2010_wdi `type'_lcu_wdi {
 		foreach varsecondary of varlist `type'_ppp2017_wdi `type'_ppp2011_wdi `type'_usd2010_wdi `type'_lcu_wdi {
@@ -367,11 +371,15 @@ foreach type in hfce {
 
 
 // For some countries we know GDP in 2010 USD, GDP in 2017 PPP, and GNI in 2010 USD but not GNI in 2017 PPP. Below I leverage the fact that the ratio between GDP in 2010 USD and 2017 PPP should be the same as the ratio between GNI in 2010 USD and 2017 PPP to back out the element that's missing. And so on across currencies and across income measures.
+
+gen gni_ppp2011_wdi = . //I am now introducing GNI in 2011 PPP, so that it can be derived from the ratios in other currencies.
+
 foreach typ1 in gdp gni hfce {
 	foreach typ2 in gdp gni hfce {
 		foreach cur1 in ppp2017 ppp2011 usd2010 lcu {
 			foreach cur2 in ppp2017 usd2010 lcu {
-				replace `typ1'_`cur1'_wdi = `typ1'_`cur2'_wdi*(`typ2'_`cur1'_wdi/`typ2'_`cur2'_wdi) if missing(`typ1'_`cur1'_wdi)
+			replace `typ1'_`cur1'_wdi = `typ1'_`cur2'_wdi*(`typ2'_`cur1'_wdi/`typ2'_`cur2'_wdi) if missing(`typ1'_`cur1'_wdi)
+		
 			}
 		}
 	}
@@ -425,9 +433,11 @@ format gdp* gni* hfce* %6.0f
 compress
 
 *save "OutputData/NationalAccounts.dta", replace
-save "OutputData/NationalAccounts_30Mar2021.dta", replace
+save "OutputData/NationalAccounts_12Apr2021.dta", replace
 
-use "OutputData/NationalAccounts_30Mar2021.dta", clear 
+
+//Check if there are any differences.
+use "OutputData/NationalAccounts_12Apr2021.dta", clear 
 
 foreach var of varlist gdp* gni* hfce*{
 rename `var' `var'_
@@ -435,26 +445,110 @@ rename `var' `var'_
 
 merge 1:1 code year using "OutputData/NationalAccounts.dta", nogen
 
-/*
-scatter gdp_ppp2011_  gdp_ppp2011
-scatter gdp_ppp2011_  gdp_ppp2011, mlabel(code)
-scatter gdp_ppp2017_  gdp_ppp2017
+//GNI - LCU
+sum gni_lcu_ gni_lcu
+gen d_gni_lcu = gni_lcu_/gni_lcu
+count if d_gni_lcu!=1 & !missing(d_gni_lcu)
+gsort -d_gni_lcu
+br code year gni_lcu_ gni_lcu d_gni_lcu if d_gni_lcu!=1 & !missing(d_gni_lcu)
 
-scatter hfce_ppp2017_ hfce_ppp2017
+//GDP - LCU
+sum gdp_lcu_ gdp_lcu
+gen d_gdp_lcu = gdp_lcu_/gdp_lcu
+count if d_gdp_lcu!=1 & !missing(d_gdp_lcu)
+gsort -d_gdp_lcu
+br code year gdp_lcu_ gdp_lcu d_gdp_lcu if d_gdp_lcu!=1 & !missing(d_gdp_lcu)
 
-scatter hfce_ppp2011_ hfce_ppp2011
-scatter hfce_ppp2011_ hfce_ppp2011, mlabel(code)
+//HFCE - LCU
+sum hfce_lcu_ hfce_lcu
+gen d_hfce_lcu = hfce_lcu_/hfce_lcu
+count if d_hfce_lcu!=1 & !missing(d_hfce_lcu)
+gsort -d_hfce_lcu
+br code year hfce_lcu_ hfce_lcu d_hfce_lcu if d_hfce_lcu!=1 & !missing(d_hfce_lcu)
+
+//GDP - 2017 PPP
+sum gdp_ppp2017_ gdp_ppp2017
+gen d_gdp_ppp2017 = gdp_ppp2017_/gdp_ppp2017
+count if d_gdp_ppp2017!=1 & !missing(d_gdp_ppp2017)
+gsort -d_gdp_ppp2017
+br code year gdp_ppp2017_ gdp_ppp2017 d_gdp_ppp2017 if d_gdp_ppp2017!=1 & !missing(d_gdp_ppp2017)
+
+//GDP - 2011 PPP 
+sum gdp_ppp2011_ gdp_ppp2011
+gen d_gdp_ppp2011 = gdp_ppp2011_/gdp_ppp2011
+count if d_gdp_ppp2011!=1 & !missing(d_gdp_ppp2011)
+gsort -d_gdp_ppp2011
+br code year gdp_ppp2011_ gdp_ppp2011 d_gdp_ppp2011 if d_gdp_ppp2011!=1 & !missing(d_gdp_ppp2011)
+scatter gdp_ppp2011_ gdp_ppp2011 if d_gdp_ppp2011!=1 & !missing(d_gdp_ppp2011), mlabel(code)
+br code year gdp_ppp2011_ gdp_ppp2011 d_gdp_ppp2011 if d_gdp_ppp2011!=1 & !missing(d_gdp_ppp2011) 
+
+//HFCE - 2017 PPP  
+sum hfce_ppp2017_ hfce_ppp2017
+gen d_hfce_ppp2017 = hfce_ppp2017_/hfce_ppp2017
+count if d_hfce_ppp2017!=1 & !missing(d_hfce_ppp2017)
+gsort -d_hfce_ppp2017
+br code year hfce_ppp2017_ hfce_ppp2017 d_hfce_ppp2017 if d_hfce_ppp2017!=1 & !missing(d_hfce_ppp2017)
+scatter hfce_ppp2017_ hfce_ppp2017 if d_hfce_ppp2017!=1 & !missing(d_hfce_ppp2017), mlabel(code)
+br code year hfce_ppp2017_ hfce_ppp2017 d_hfce_ppp2017 if d_hfce_ppp2017!=1 & !missing(d_hfce_ppp2017) 
+
+//HFCE - 2011 PPP
+sum hfce_ppp2011_ hfce_ppp2011
+gen d_hfce_ppp2011 = hfce_ppp2011_/hfce_ppp2011
+count if d_hfce_ppp2011!=1 & !missing(d_hfce_ppp2011)
+gsort -d_hfce_ppp2011
+br code year hfce_ppp2011_ hfce_ppp2011 d_hfce_ppp2011 if d_hfce_ppp2011!=1 & !missing(d_hfce_ppp2011)
+scatter hfce_ppp2011_ hfce_ppp2011 if d_hfce_ppp2011!=1 & !missing(d_hfce_ppp2011), mlabel(code)
+br code year hfce_ppp2011_ hfce_ppp2011 d_hfce_ppp2011 if d_hfce_ppp2011!=1 & !missing(d_hfce_ppp2011) 
+
+//GNI - 2017 PPP  
+sum gni_ppp2017_ gni_ppp2017
+gen d_gni_ppp2017 = gni_ppp2017_/gni_ppp2017
+count if d_gni_ppp2017!=1 & !missing(d_gni_ppp2017)
+gsort -d_gni_ppp2017
+br code year gni_ppp2017_ gni_ppp2017 d_gni_ppp2017 if d_gni_ppp2017!=1 & !missing(d_gni_ppp2017)
+scatter gni_ppp2017_ gni_ppp2017 if d_gni_ppp2017!=1 & !missing(d_gni_ppp2017), mlabel(code)
+br code year gni_ppp2017_ gni_ppp2017 d_gni_ppp2017 if d_gni_ppp2017!=1 & !missing(d_gni_ppp2017) 
 
 
-scatter hfce_ppp2017_ hfce_ppp2017
+//GNI - 2011 PPP  
+sum gni_ppp2011_ gni_ppp2011
+gen d_gni_ppp2011 = gni_ppp2011_/gni_ppp2011
+count if d_gni_ppp2011!=1 & !missing(d_gni_ppp2011)
+gsort -d_gni_ppp2011
+br code year gni_ppp2011_ gni_ppp2011 d_gni_ppp2011 if d_gni_ppp2011!=1 & !missing(d_gni_ppp2011)
+scatter gni_ppp2011_ gni_ppp2011 if d_gni_ppp2011!=1 & !missing(d_gni_ppp2011), mlabel(code)
+br code year gni_ppp2011_ gni_ppp2011 d_gni_ppp2011 if d_gni_ppp2011!=1 & !missing(d_gni_ppp2011) 
 
-scatter gni_ppp2017_ gni_ppp2017
+//GNI - 2010 USD
+sum gni_usd2010_ gni_usd2010
+gen d_gni_usd2010 = gni_usd2010_/gni_usd2010
+count if d_gni_usd2010!=1 & !missing(d_gni_usd2010)
+gsort -d_gni_usd2010
+br code year gni_usd2010_ gni_usd2010 d_gni_usd2010 if d_gni_usd2010!=1 & !missing(d_gni_usd2010)
+scatter gni_usd2010_ gni_usd2010 if d_gni_usd2010!=1 & !missing(d_gni_usd2010), mlabel(code)
+br code year gni_usd2010_ gni_usd2010 d_gni_usd2010 if d_gni_usd2010!=1 & !missing(d_gni_usd2010) 
 
-scatter gni_ppp2011_ gni_ppp2011
-scatter gni_ppp2011_ gni_ppp2011, mlabel(code)
-*/
 
+//GDP - 2010 USD
+sum gdp_usd2010_ gdp_usd2010
+gen d_gdp_usd2010 = gdp_usd2010_/gdp_usd2010
+count if d_gdp_usd2010!=1 & !missing(d_gdp_usd2010)
+gsort -d_gdp_usd2010
+br code year gdp_usd2010_ gdp_usd2010 d_gdp_usd2010 if d_gdp_usd2010!=1 & !missing(d_gdp_usd2010)
+scatter gdp_usd2010_ gdp_usd2010 if d_gdp_usd2010!=1 & !missing(d_gdp_usd2010), mlabel(code)
+br code year gdp_usd2010_ gdp_usd2010 d_gdp_usd2010 if d_gdp_usd2010!=1 & !missing(d_gdp_usd2010) 
+
+//HFCE - 2010 USD
+sum hfce_usd2010_ hfce_usd2010
+gen d_hfce_usd2010 = hfce_usd2010_/hfce_usd2010
+count if d_hfce_usd2010!=1 & !missing(d_hfce_usd2010)
+gsort -d_hfce_usd2010
+br code year hfce_usd2010_ hfce_usd2010 d_hfce_usd2010 if d_hfce_usd2010!=1 & !missing(d_hfce_usd2010)
+scatter hfce_usd2010_ hfce_usd2010 if d_hfce_usd2010!=1 & !missing(d_hfce_usd2010), mlabel(code)
+br code year hfce_usd2010_ hfce_usd2010 d_hfce_usd2010 if d_hfce_usd2010!=1 & !missing(d_hfce_usd2010) 
+
+
+//Check Taiwan, Somalia, Syria and North Korea
 sort code year
-order code year gdp_ppp2017 gdp_ppp2017_ gdp_ppp2011 gdp_ppp2011_ hfce_ppp2017 hfce_ppp2017_ hfce_ppp2011 hfce_ppp2011_
-br code year gdp_ppp2017 gdp_ppp2017_ gdp_ppp2011 gdp_ppp2011_ hfce_ppp2017 hfce_ppp2017_ hfce_ppp2011 hfce_ppp2011_ if code=="NGA"
-br code year gdp_ppp2017 gdp_ppp2017_ gdp_ppp2011 gdp_ppp2011_ hfce_ppp2017 hfce_ppp2017_ hfce_ppp2011 hfce_ppp2011_ if code=="LBR"
+order  code year gdp_ppp2017_ gdp_ppp2017 gdp_ppp2011_ gdp_ppp2011 gdp_usd2010_ gdp_usd2010
+br code year gdp_ppp2017_ gdp_ppp2017 gdp_ppp2011_ gdp_ppp2011 gdp_usd2010_ gdp_usd2010 if inlist(code,"TWN","SOM","SYR","PRK")
