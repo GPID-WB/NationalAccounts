@@ -84,7 +84,7 @@ save    `wdi'
 ************************
 *** PREPARE WEO DATA ***
 ************************
-import excel using "InputData/WEO_2020_10.xls", clear firstrow case(lower)
+import excel using "InputData/WEO_2021_04.xlsx", clear firstrow case(lower)
 // Only keeping variables on real GDP (no HFCE or GNI data)
 keep if inlist(weosubjectcode,"NGDPRPC","NGDPRPPPPC","NGDP_R")
 replace weosubjectcode="_lcu_weo"     if weosubjectcode=="NGDPRPC"
@@ -109,6 +109,8 @@ drop if inlist(gdp,"n/a","--")
 destring gdp, replace
 // Reshape wide by gdp variables
 reshape wide gdp, i(code year) j(weosubjectcode) string
+// Change pc variable from in billions:
+replace gdp_lcu_weo_npc = gdp_lcu_weo_npc*10^9
 tempfile weo
 save    `weo'
 
@@ -116,8 +118,7 @@ save    `weo'
 *** PREPARE MADDISON DATA ***
 *****************************
 // Load data from website
-*use "https://www.rug.nl/ggdc/historicaldevelopment/maddison/data/mpd2020.dta", clear
-use "InputData/mpd2020.dta", clear
+use "https://www.rug.nl/ggdc/historicaldevelopment/maddison/data/mpd2020.dta", clear
 // Keep relevant variables
 rename countrycode code
 rename gdppc gdp_ppp2011_mdp
@@ -252,7 +253,7 @@ merge m:1 code      using `gdp_def', nogen
 
 // Only keep 218 countries in WB universe
 merge m:1 code      using `iso', nogen keep(2 3) /// _merge==1 are countries not among the 218
-// Only keeping data from 1967 (first survey in PovcalNet) to the present yearr
+// Only keeping data from 1967 (first survey in PovcalNet) to the present year
 local currentyear = substr("$S_DATE",-4,.)
 keep if inrange(year,1967,`currentyear')
 
@@ -280,7 +281,7 @@ drop population
 *****************************************************
 *** FILL OUT GAPS IN GDP WITH CONSTANT LCU VALUES ***
 *****************************************************
-*count if missing(gdp_ppp2017_wdi) & !missing(gdp_lcu_wdi) & !missing(gdp_def2017) & !missing(ppp_gdp2017)
+count if missing(gdp_ppp2017_wdi) & !missing(gdp_lcu_wdi) & !missing(gdp_def2017) & !missing(ppp_gdp2017)
 *br code year gdp_ppp2017_wdi gdp_lcu_wdi gdp_def2017 ppp_gdp2017 if missing(gdp_ppp2017_wdi) & !missing(gdp_lcu_wdi) & !missing(gdp_def2017) & !missing(ppp_gdp2017)
 
 //Important to note: Base year for GDP deflator varies by country. First, determine the base years used, and move to the 2017 ICP reference years.  
@@ -293,7 +294,7 @@ gen gdpdef_cf_2017 = gdp_def2017/gdpdef_base   //Compute conversion factor for G
 gen gdp_2017ppp_own = gdp_lcu_wdi * gdpdef_cf_2017 * (1/ppp_gdp2017)
 gen d_gdp_2017ppp = gdp_ppp2017_wdi/gdp_2017ppp_own  //Check difference between own GDP and series in WDI for non-missing observations in WDI. 
 
-sum d_gdp_2017ppp //Not a perfect match (mean = 1.000003, min = .9739763, max = 1.037369)
+sum d_gdp_2017ppp, d //Not a perfect match (mean = 1.000003, min = .9739763, max = 1.037369)
 
 gsort -d_gdp_2017ppp
 br code year d_gdp_2017ppp gdp_ppp2017_wdi gdp_2017ppp_own gdp_lcu_wdi gdp_def2017 ppp_gdp2017 if !missing(d_gdp_2017ppp)
@@ -428,127 +429,25 @@ foreach curr in ppp2017 ppp2011 usd2010 lcu {
 lab var `type'_`curr' "`TYPE' per capita in `curr'"
 }
 }
-order code year gdp* gni* hfce*
-format gdp* gni* hfce* %6.0f
-compress
 
-*save "OutputData/NationalAccounts.dta", replace
-save "OutputData/NationalAccounts_12Apr2021.dta", replace
-
-
-//Check if there are any differences.
-use "OutputData/NationalAccounts_12Apr2021.dta", clear 
-
-foreach var of varlist gdp* gni* hfce*{
-rename `var' `var'_
+*******************************
+*** CREATE GROWTH VARIABLES ***
+*******************************
+foreach type in gdp gni hfce {
+bysort code (year): gen     `type'_growth = `type'_lcu/`type'_lcu[_n-1]-1
+foreach cur in usd2010 ppp2011 ppp2017 {
+bysort code (year): replace `type'_growth = `type'_`cur'/`type'_`cur'[_n-1]-1 if missing(`type'_growth)
+}
+local TYPE = upper(`"`type'"')
+lab var `type'_growth "Growth in `TYPE' per capita"
 }
 
-merge 1:1 code year using "OutputData/NationalAccounts.dta", nogen
+****************
+*** FINALIZE ***
+****************
+order code year gdp* gni* hfce*
+format gdp* gni* hfce* %6.0f
+format *growth %4.3f
+compress
 
-//GNI - LCU
-sum gni_lcu_ gni_lcu
-gen d_gni_lcu = gni_lcu_/gni_lcu
-count if d_gni_lcu!=1 & !missing(d_gni_lcu)
-gsort -d_gni_lcu
-br code year gni_lcu_ gni_lcu d_gni_lcu if d_gni_lcu!=1 & !missing(d_gni_lcu)
-
-//GDP - LCU
-sum gdp_lcu_ gdp_lcu
-gen d_gdp_lcu = gdp_lcu_/gdp_lcu
-count if d_gdp_lcu!=1 & !missing(d_gdp_lcu)
-gsort -d_gdp_lcu
-br code year gdp_lcu_ gdp_lcu d_gdp_lcu if d_gdp_lcu!=1 & !missing(d_gdp_lcu)
-
-//HFCE - LCU
-sum hfce_lcu_ hfce_lcu
-gen d_hfce_lcu = hfce_lcu_/hfce_lcu
-count if d_hfce_lcu!=1 & !missing(d_hfce_lcu)
-gsort -d_hfce_lcu
-br code year hfce_lcu_ hfce_lcu d_hfce_lcu if d_hfce_lcu!=1 & !missing(d_hfce_lcu)
-
-//GDP - 2017 PPP
-sum gdp_ppp2017_ gdp_ppp2017
-gen d_gdp_ppp2017 = gdp_ppp2017_/gdp_ppp2017
-count if d_gdp_ppp2017!=1 & !missing(d_gdp_ppp2017)
-gsort -d_gdp_ppp2017
-br code year gdp_ppp2017_ gdp_ppp2017 d_gdp_ppp2017 if d_gdp_ppp2017!=1 & !missing(d_gdp_ppp2017)
-
-//GDP - 2011 PPP 
-sum gdp_ppp2011_ gdp_ppp2011
-gen d_gdp_ppp2011 = gdp_ppp2011_/gdp_ppp2011
-count if d_gdp_ppp2011!=1 & !missing(d_gdp_ppp2011)
-gsort -d_gdp_ppp2011
-br code year gdp_ppp2011_ gdp_ppp2011 d_gdp_ppp2011 if d_gdp_ppp2011!=1 & !missing(d_gdp_ppp2011)
-scatter gdp_ppp2011_ gdp_ppp2011 if d_gdp_ppp2011!=1 & !missing(d_gdp_ppp2011), mlabel(code)
-br code year gdp_ppp2011_ gdp_ppp2011 d_gdp_ppp2011 if d_gdp_ppp2011!=1 & !missing(d_gdp_ppp2011) 
-
-//HFCE - 2017 PPP  
-sum hfce_ppp2017_ hfce_ppp2017
-gen d_hfce_ppp2017 = hfce_ppp2017_/hfce_ppp2017
-count if d_hfce_ppp2017!=1 & !missing(d_hfce_ppp2017)
-gsort -d_hfce_ppp2017
-br code year hfce_ppp2017_ hfce_ppp2017 d_hfce_ppp2017 if d_hfce_ppp2017!=1 & !missing(d_hfce_ppp2017)
-scatter hfce_ppp2017_ hfce_ppp2017 if d_hfce_ppp2017!=1 & !missing(d_hfce_ppp2017), mlabel(code)
-br code year hfce_ppp2017_ hfce_ppp2017 d_hfce_ppp2017 if d_hfce_ppp2017!=1 & !missing(d_hfce_ppp2017) 
-
-//HFCE - 2011 PPP
-sum hfce_ppp2011_ hfce_ppp2011
-gen d_hfce_ppp2011 = hfce_ppp2011_/hfce_ppp2011
-count if d_hfce_ppp2011!=1 & !missing(d_hfce_ppp2011)
-gsort -d_hfce_ppp2011
-br code year hfce_ppp2011_ hfce_ppp2011 d_hfce_ppp2011 if d_hfce_ppp2011!=1 & !missing(d_hfce_ppp2011)
-scatter hfce_ppp2011_ hfce_ppp2011 if d_hfce_ppp2011!=1 & !missing(d_hfce_ppp2011), mlabel(code)
-br code year hfce_ppp2011_ hfce_ppp2011 d_hfce_ppp2011 if d_hfce_ppp2011!=1 & !missing(d_hfce_ppp2011) 
-
-//GNI - 2017 PPP  
-sum gni_ppp2017_ gni_ppp2017
-gen d_gni_ppp2017 = gni_ppp2017_/gni_ppp2017
-count if d_gni_ppp2017!=1 & !missing(d_gni_ppp2017)
-gsort -d_gni_ppp2017
-br code year gni_ppp2017_ gni_ppp2017 d_gni_ppp2017 if d_gni_ppp2017!=1 & !missing(d_gni_ppp2017)
-scatter gni_ppp2017_ gni_ppp2017 if d_gni_ppp2017!=1 & !missing(d_gni_ppp2017), mlabel(code)
-br code year gni_ppp2017_ gni_ppp2017 d_gni_ppp2017 if d_gni_ppp2017!=1 & !missing(d_gni_ppp2017) 
-
-
-//GNI - 2011 PPP  
-sum gni_ppp2011_ gni_ppp2011
-gen d_gni_ppp2011 = gni_ppp2011_/gni_ppp2011
-count if d_gni_ppp2011!=1 & !missing(d_gni_ppp2011)
-gsort -d_gni_ppp2011
-br code year gni_ppp2011_ gni_ppp2011 d_gni_ppp2011 if d_gni_ppp2011!=1 & !missing(d_gni_ppp2011)
-scatter gni_ppp2011_ gni_ppp2011 if d_gni_ppp2011!=1 & !missing(d_gni_ppp2011), mlabel(code)
-br code year gni_ppp2011_ gni_ppp2011 d_gni_ppp2011 if d_gni_ppp2011!=1 & !missing(d_gni_ppp2011) 
-
-//GNI - 2010 USD
-sum gni_usd2010_ gni_usd2010
-gen d_gni_usd2010 = gni_usd2010_/gni_usd2010
-count if d_gni_usd2010!=1 & !missing(d_gni_usd2010)
-gsort -d_gni_usd2010
-br code year gni_usd2010_ gni_usd2010 d_gni_usd2010 if d_gni_usd2010!=1 & !missing(d_gni_usd2010)
-scatter gni_usd2010_ gni_usd2010 if d_gni_usd2010!=1 & !missing(d_gni_usd2010), mlabel(code)
-br code year gni_usd2010_ gni_usd2010 d_gni_usd2010 if d_gni_usd2010!=1 & !missing(d_gni_usd2010) 
-
-
-//GDP - 2010 USD
-sum gdp_usd2010_ gdp_usd2010
-gen d_gdp_usd2010 = gdp_usd2010_/gdp_usd2010
-count if d_gdp_usd2010!=1 & !missing(d_gdp_usd2010)
-gsort -d_gdp_usd2010
-br code year gdp_usd2010_ gdp_usd2010 d_gdp_usd2010 if d_gdp_usd2010!=1 & !missing(d_gdp_usd2010)
-scatter gdp_usd2010_ gdp_usd2010 if d_gdp_usd2010!=1 & !missing(d_gdp_usd2010), mlabel(code)
-br code year gdp_usd2010_ gdp_usd2010 d_gdp_usd2010 if d_gdp_usd2010!=1 & !missing(d_gdp_usd2010) 
-
-//HFCE - 2010 USD
-sum hfce_usd2010_ hfce_usd2010
-gen d_hfce_usd2010 = hfce_usd2010_/hfce_usd2010
-count if d_hfce_usd2010!=1 & !missing(d_hfce_usd2010)
-gsort -d_hfce_usd2010
-br code year hfce_usd2010_ hfce_usd2010 d_hfce_usd2010 if d_hfce_usd2010!=1 & !missing(d_hfce_usd2010)
-scatter hfce_usd2010_ hfce_usd2010 if d_hfce_usd2010!=1 & !missing(d_hfce_usd2010), mlabel(code)
-br code year hfce_usd2010_ hfce_usd2010 d_hfce_usd2010 if d_hfce_usd2010!=1 & !missing(d_hfce_usd2010) 
-
-
-//Check Taiwan, Somalia, Syria and North Korea
-sort code year
-order  code year gdp_ppp2017_ gdp_ppp2017 gdp_ppp2011_ gdp_ppp2011 gdp_usd2010_ gdp_usd2010
-br code year gdp_ppp2017_ gdp_ppp2017 gdp_ppp2011_ gdp_ppp2011 gdp_usd2010_ gdp_usd2010 if inlist(code,"TWN","SOM","SYR","PRK")
+save "OutputData/NationalAccounts.dta", replace
